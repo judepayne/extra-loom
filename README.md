@@ -10,7 +10,7 @@ Deliberately keep simple for Clojurescript compatibility; Loom is the only depen
 
 ## Installation
 
-    [extra-loom "0.1.0"]
+    [extra-loom "0.1.1"]
 
 ## Usage
 
