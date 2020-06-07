@@ -11,7 +11,7 @@ A lot of the constructs in this library were inspired by Ubergraph, which is Clo
 ## Installation
 
     [extra-loom "0.1.1"]
-<br/><br/>
+
 ## Usage
 
     (require '[extra-loom.graph :refer :all])
