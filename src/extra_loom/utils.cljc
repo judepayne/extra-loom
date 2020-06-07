@@ -12,11 +12,11 @@
   (complement in?))
 
 
-(defn apply-if
+(defn update-in-if
   "Applies f to m with args if test is true. test is a 1-arg fn passed m."
-  [m test f & args]
-  (if (test m)
-    (apply f m args)
+  [m test ks f & args]
+  (if test
+    (apply update-in m ks f args)
     m))
 
 
@@ -41,6 +41,14 @@
                      (assoc m k (apply f (get m k) args))
                      m)))))]
        (up m ks f args)))
+
+
+(defn update-in-all-if
+  "Like update-in-all but only if test is true."
+  [m test ks f & args]
+  (if test
+    (apply update-in-all m ks f args)
+    m))
 
 
 (defn dissoc-in

@@ -1,6 +1,7 @@
-(ns extra-loom.graph
+(ns extra-loom.multigraph
   (:require [extra-loom.utils
-             :refer [in? not-in? apply-if join update-in-all dissoc-in dissoc-in-when dissoc-in-clean]]
+             :refer [in? not-in? update-in-if join update-in-all dissoc-in dissoc-in-when
+                     dissoc-in-clean update-in-all-if]]
             [loom.graph :refer [Graph ;; the Graph protocol & its members
                                 nodes edges has-node? has-edge? successors* out-degree out-edges
 
@@ -14,19 +15,26 @@
                                 src dest
 
                                 ;; any more vars needed by our implementation
-                                successors predecessors]]
+                                successors predecessors
+
+                                ;; TODO REMOVE
+                                digraph
+                                graph]]
             [loom.graph :as lg]
             [loom.attr  :refer [AttrGraph ;; the AttrGraph protocol & its members
-                                add-attr remove-attr attr attrs]]))
+                                add-attr remove-attr attr attrs]]
+            #?@(:clj [[loom.cljs :refer (def-protocol-impls)]]))
+            #?@(:cljs [(:require-macros [loom.cljs :refer [def-protocol-impls extend]])]))
 
 ;; Edge
 
 (defprotocol Identified
-  (id [this] "Returns the id of this."))
+  (id [this] "Returns the id of this.")
+  (mirrored? [this] "Returns true if this is a mirrored edge."))
 
 
 ;; Record for an Edge that implements Loom's Edge protocol, and helper fns
-(defrecord UniqueEdge [id src dest])
+(defrecord UniqueEdge [id src dest mirrored?])
 
 
 (extend-type UniqueEdge
@@ -34,29 +42,47 @@
   (src [edge] (:src edge))
   (dest [edge] (:dest edge))
   Identified
-  (id [edge] (:id edge)))
+  (id [edge] (:id edge))
+  (mirrored? [edge] (:mirrored? edge)))
+
+
+(extend-type #?(:clj clojure.lang.IPersistentVector
+                :cljs cljs.core.PersistentVector)
+  Identified
+  (id [this] nil)
+  (mirrored? [this] false))
 
 
 (defn make-edge
   "Returns a new UniqueEdge instance from src and dest."
-  [src dest]
-  (UniqueEdge.
-   #?(:clj (java.util.UUID/randomUUID)
-      :cljs (random-uuid))
-   src dest))
-
-
-(defn edge-equiv?
-  "Does this edge have the same src and dest as the other?"
-  [this other]
-  (and (= (src this) (src other))
-       (= (dest this) (dest other))))
+  ([src dest]
+   (UniqueEdge.
+    #?(:clj (java.util.UUID/randomUUID)
+       :cljs (random-uuid))
+    src dest false))
+  ([src dest mirrored?]
+   (UniqueEdge.
+    #?(:clj (java.util.UUID/randomUUID)
+       :cljs (random-uuid))
+    src dest mirrored?)))
 
 
 (defn unique-edge?
   "Is e a UniqueEdge?"
   [e]
   (instance? UniqueEdge e))
+
+
+(defn edge-equiv?
+  "Does this edge have the same src and dest as the other?"
+  [this other]
+  (or
+   (and (= (mirrored? this) (mirrored? other))
+        (= (src this) (src other))
+        (= (dest this) (dest other)))
+   (and (not= (mirrored? this) (mirrored? other))
+        (= (src this) (dest other))
+        (= (dest this) (src other)))))
 
 
 (defn edge?
@@ -78,8 +104,26 @@
 (defn edges-between* [g n1 n2] (get-in g [:nodemap n1 :out-edges n2]))
 
 
-;; A MultiEdge Editable Digraph allows for multiple edges between the same two nodes.
+(defn- edges-of-type
+  "Fetches the edges in the graph of edge-type which should be either
+   :in-edges or :out-edges."
+  [g edge-type]
+  (reduce
+   (fn [acc [k v]] (concat acc (-> v edge-type vals join)))
+   #{}
+   (:nodemap g)))
+
+
+;; A MultiEdge Graphs/ Digraphs allows for multiple edges between the same two nodes.
 (defrecord MultiEdgeEditableDigraph [nodemap attrs])
+
+
+(defrecord MultiEdgeEditableGraph [nodemap attrs])
+
+
+(defn digraph?
+  [g]
+  (if (satisfies? Digraph g) true false))
 
 
 (defn- has-node?*
@@ -91,10 +135,7 @@
 (defn- edges*
   "Returns the edges of the graph."
   [g]
-  (reduce
-   (fn [acc [k v]] (concat acc (-> v :out-edges vals join)))
-   #{}
-   (:nodemap g)))
+  (edges-of-type g :out-edges))
 
 
 (defn- nodes*
@@ -133,16 +174,25 @@
     (if am (update-in g [:attrs] assoc node am) g)))
 
 
+(defn- reverse-edge
+  "Reverses the direction of an edge."
+  [e]
+  (assoc e :src (dest e) :dest (src e)))
+
+
 (defn- add-edge
   "Adds an edge to the graph. The edge should be either a 2-vector [src dest]
-  or a 3-vector [src dest attr-map]."
-  [g edge]
+  or a 3-vector [src dest attr-map]. mirrored? indicates a mirrored edge in a grpah, not digraph."
+  [g edge & {:keys [mirrored?] :or {mirrored? false}}]
   (let [[s d am] edge   ;; destructure into src dest attrp-map
         e (make-edge s d)
+        e' (assoc (reverse-edge e) :mirrored? true)
         ins (ins g s)
         g (-> g
               (add-node s)   ;; in this form, node s has no metadata/attrs
               (update-in [:nodemap s :out-edges d] (fnil conj #{}) e)
+              (update-in-if mirrored? [:nodemap d :out-edges s] (fnil conj #{}) e')
+              (update-in-if mirrored? [:nodemap s :in-edges d] (fnil conj #{}) e')
               (add-node d))] ;; in this form, node d has no metadata/attrs
         (if am (assoc-in g [:attrs (:id e)] am) g)))
 
@@ -163,7 +213,11 @@
     (-> g
         (update-in [:nodemap s :out-edges] excise-edge d out-edges-after)
         (update-in [:nodemap d :in-edges] excise-edge s in-edges-after)
+        (update-in [:nodemap s :in-edges] excise-edge d in-edges-after)
+        (update-in [:nodemap d :out-edges] excise-edge s out-edges-after)
         (update-in [:attrs] dissoc id))))
+;; TODO
+
 
 
 (defn- remove-edge
@@ -183,7 +237,8 @@
       (dissoc-in [:nodemap node])
       (dissoc-in [:attrs node])
       ;; remove orphaned in-edges
-      (update-in-all [:nodemap :all :in-edges] dissoc node)))
+      (update-in-all [:nodemap :all :in-edges] dissoc node)
+      (update-in-all [:nodemap :all :out-edges] dissoc node)))
 
 
 (defn- remove-empty-edge-containers
@@ -192,13 +247,6 @@
   (-> g
       (dissoc-in-when [:nodemap :all :out-edges :all] empty?)
       (dissoc-in-when [:nodemap :all :in-edges :all] empty?)))
-
-
-;; these 3 functions are used to transpose
-(defn- reverse-edge
-  "Reverses the direction of an edge."
-  [e]
-  (assoc e :src (dest e) :dest (src e)))
 
 
 (defn- reverse-edges
@@ -284,71 +332,149 @@
       es))))
 
 
-(extend-type MultiEdgeEditableDigraph
+;; Default implementations of the protocols
+(def-protocol-impls ^:private impl-graph
+  {:nodes (fn [g] (nodes* g))
+   :edges (fn [g] (edges* g))
+   :has-node? (fn [g node] (contains? (nodes* g) node))
+   :has-edge? (fn [g n1 n2] (let [m (get-in g [:nodemap n1 :out-edges])]
+                              (if (some #{n2} (keys m)) true false)))
+   :successors* (fn [g node] (keys (get-in g [:nodemap node :out-edges])))
+   :out-degree (fn [g node] (count (join (vals (get-in g [:nodemap node :out-edges])))))
+   :out-edges (fn [g node] (join (vals (get-in g [:nodemap node :out-edges]))))})
 
+
+(def-protocol-impls ^:private impl-digraph
+  {:predecessors* (fn [g node] (keys (get-in g [:nodemap node :in-edges])))
+   :in-degree (fn [g node] (count (join (vals (get-in g [:nodemap node :in-edges])))))
+   :in-edges (fn [g node] (join (vals (get-in g [:nodemap node :in-edges]))))     
+   :transpose (fn [g] (update-in-all g [:nodemap :all] swap-ins-outs))})
+
+
+(def-protocol-impls ^:private impl-editablegraph
+  {:add-nodes* (fn [g nodes] (reduce add-node g nodes))
+   :add-edges* (fn [g edges] (if (digraph? g)
+                               (reduce add-edge g edges)
+                               (reduce #(add-edge %1 %2 :mirrored? true) g edges)))
+   :remove-nodes* (fn [g nodes] (reduce remove-node g nodes))
+   :remove-edges* (fn [g edges] (remove-empty-edge-containers (reduce remove-edge g edges)))
+   :remove-all (fn [g] (assoc g :nodemap {} :attrs {}))})
+
+
+(def-protocol-impls ^:prviate impl-multipleedge
+  {:edges-between (fn [g n1 n2] (edges-between* g n1 n2))})
+
+
+(def-protocol-impls ^:private impl-attrgraph
+  {:add-attr
+   (fn
+     ([g node-or-edge k v] (if (unique-edge? node-or-edge)
+                               (add-attr-to-edge g node-or-edge k v)
+                               (add-attr-to-node g node-or-edge k v)))
+     ([g n1 n2 k v] (add-attr-to-edge g n1 n2 k v)))
+   :remove-attr
+   (fn
+     ([g node-or-edge k] (if (unique-edge? node-or-edge)
+                             (remove-attr-from-edge g node-or-edge k)
+                             (remove-attr-from-node g node-or-edge k)))
+     ([g n1 n2 k] (remove-attr-from-edge g n1 n2 k)))
+   :attr
+   (fn
+     ([g node-or-edge k] (attr* g node-or-edge k))
+     ([g n1 n2 k] (attr* g n1 n2 k)))
+   :attrs
+   (fn
+     ([g node-or-edge] (attrs* g node-or-edge))
+     ([g n1 n2] (attrs* g n1 n2)))})
+
+
+;; A multigraph
+(extend MultiEdgeEditableGraph
   Graph
-  (nodes [g] (nodes* g))
-  (edges [g] (edges* g))
-  (has-node? [g node] (contains? (nodes g) node))
-  (has-edge? [g n1 n2] (let [m (get-in g [:nodemap n1 :out-edges])]
-                         (if (some #{n2} (keys m)) true false)))
-  (successors* [g node] (keys (get-in g [:nodemap node :out-edges])))
-  (out-degree [g node] (count (join (vals (get-in g [:nodemap node :out-edges])))))
-  (out-edges [g node] (join (vals (get-in g [:nodemap node :out-edges]))))
-
-  Digraph
-  (predecessors* [g node] (keys (get-in g [:nodemap node :in-edges])))
-  (in-degree [g node] (count (join (vals (get-in g [:nodemap node :in-edges])))))
-  (in-edges [g node] (join (vals (get-in g [:nodemap node :in-edges]))))     
-  (transpose [g] (update-in-all g [:nodemap :all] swap-ins-outs))
+  impl-graph
 
   EditableGraph
-  (add-nodes* [g nodes] (reduce add-node g nodes))
-  (add-edges* [g edges] (reduce add-edge g edges))
-  (remove-nodes* [g nodes] (reduce remove-node g nodes))
-  (remove-edges* [g edges] (remove-empty-edge-containers (reduce remove-edge g edges)))
-  (remove-all [g] (assoc g :nodemap {} :attrs {}))
+  impl-editablegraph
 
   MultipleEdge
-  (edges-between [g n1 n2] (edges-between* g n1 n2))
+  impl-multipleedge
 
   AttrGraph
-  ;; note the syntax for extend-type and multi-arity protocols.
-  (add-attr
-    ([g node-or-edge k v] (if (unique-edge? node-or-edge)
-                            (add-attr-to-edge g node-or-edge k v)
-                            (add-attr-to-node g node-or-edge k v)))
-    ([g n1 n2 k v] (add-attr-to-edge g n1 n2 k v)))
-  (remove-attr
-    ([g node-or-edge k] (if (unique-edge? node-or-edge)
-                          (remove-attr-from-edge g node-or-edge k)
-                          (remove-attr-from-node g node-or-edge k)))
-    ([g n1 n2 k] (remove-attr-from-edge g n1 n2 k)))
-  (attr
-    ([g node-or-edge k] (attr* g node-or-edge k))
-    ([g n1 n2 k] (attr* g n1 n2 k)))
-  (attrs
-    ([g node-or-edge] (attrs* g node-or-edge))
-    ([g n1 n2] (attrs* g n1 n2))))
+  impl-attrgraph)
+
+
+;; A multidigraph
+(extend MultiEdgeEditableDigraph
+  Graph
+  impl-graph
+
+  Digraph
+  impl-digraph
+
+  EditableGraph
+  impl-editablegraph
+
+  MultipleEdge
+  impl-multipleedge
+
+  AttrGraph
+  impl-attrgraph)
 
 
 ;; building
 
+
 (defn- build-graph
   "Builds a multidigraph from the sequence of edges-or-nodes."
-  [edges-or-nodes]
+  [edges-or-nodes digraph?]
   (reduce
    (fn [g cur]
      (if (edge? cur)
-       (add-edge g cur)
+       (if digraph? (add-edge g cur) (add-edge g cur :mirrored? true))
        (add-node g cur)))
    {}
    edges-or-nodes))
 
 
-(defn multidigraph [& edges-or-nodes]
-  (let [g (build-graph edges-or-nodes)]
-    (MultiEdgeEditableDigraph. (:nodemap g) (:attrs g))))
+(defn build-graph
+  "Builds up a graph (i.e. adds edges and nodes) from any combination of
+  adjacency maps, edges, or nodes."
+  [g & inits]
+  (letfn [(build [g init]
+            (cond
+             ;; adacency map
+             (map? init)
+             (let [es (if (map? (val (first init)))
+                        (for [[n nbrs] init
+                              [nbr wt] nbrs]
+                          [n nbr wt])
+                        (for [[n nbrs] init
+                              nbr nbrs]
+                          [n nbr]))]
+               (-> g
+                   (add-nodes* (keys init))
+                   (add-edges* es)))
+             ;; edge
+             (edge? init) (add-edges* g [init])
+             ;; node
+             :else (add-node g init)))]
+    (reduce build g inits)))
+
+
+
+(defn multigraph [& inits]
+  (apply build-graph (MultiEdgeEditableGraph. {} {}) inits))
+
+
+(defn multidigraph [& inits]
+  (apply build-graph (MultiEdgeEditableDigraph. {} {}) inits))
+
+
+(defn distinct-edges
+  "The distinct edges in the graph. eliminates mirrored edges."
+  [g]
+  (filter (complement :mirrored?) (edges g)))
+
 
 
 ;; taken from Ubergraph
@@ -365,85 +491,6 @@
              (let [a (attrs g edge)]
                (if (seq a) a "")))))
 
- 
 
-;; in draw-graph....
-;; Use of loom.alg-generic:
-;; pre-edge-traverse bf-path
-
-;; Use of loom.attr
-;; -in graph.cljc
-
-
-(comment
-  (defn edge-invisible?
-  [g n1 n2]
-  (let [style (:style (loom.attr/attrs g n1 n2))]
-    (and style (some #(= "invis" %) (str/split style #","))))))
-
-(comment
-  ;; n is a node
-  (if (and (root? g opts n) (map? (loom.attr/attrs g n)))
-     (dissoc (loom.attr/attrs g n) :shape)
-     (loom.attr/attrs g n)))
-
-(comment
-  (defn ^:private constrained? [g n1 n2]
-  (loom.attr/attr g n1 n2 :constraint)))
-
-(comment
-  (defn edge-label
-  "Returns the label for the edge n1 n2 in g given options."
-  [g opts n1 n2]
-  (when-let [lbls (-> opts :edge :edge-label)]
-    (let [metadata (loom.attr/attr g n1 n2 :meta)]
-      (if (str/includes? lbls "/")
-        (first-label lbls metadata)
-        (composite-label lbls metadata))))))
-
-(comment
-  (defn ^:private edge-descriptor
-  "Return map of attributes for the edge from *display-conf*"
-  [g opts n1 n2]
-  (merge
-   (if (-> opts :edge :edge-label)
-     {:xlabel (doub-slash-n (edge-label g opts n1 n2)) :forcelabels true}
-     nil)
-   (constraints g opts n1 n2)
-   ;; per edge attrs supplied by user
-   (dissoc (loom.attr/attrs g n1 n2) :meta)
-   (maybe-show-constraint g opts n1 n2))))
-
-;; -in processor.cljc
-(comment
-  (defn- add-attr-map
-    [g node-or-edge m]
-    (reduce
-     (fn [acc cur] (apply loom.attr/add-attr acc node-or-edge cur))
-     g (vec m))))
-
-(comment
-  (defn- add-meta-map-to-edge
-  [g src dst m]
-  (loom.attr/add-attr-to-edges g :meta m [[src dst]])))
-
-;; -in preprocessor.cljc
-(comment
-  (loom.attr/add-attr-to-edges :style "invis" edges'-f))  ;; <-- multiple edges
-
-(comment
-  (not= (loom.attr/attr g' src dst :style) "invis"))
-
-(comment
-  (filter-fn (loom.attr/attr g' src dst :meta)))
-
-;; - (attrs g n1 n2) getting all attrs for an edge specified with n1 n2
-;; - (attrs g n) getting all attrs for a node
-;; - (attr g n1 n2 k) getting an attrs for an edge specified with n1 n2 and key k
-;; - (add-attr g node-or-edge attr-map) In a reduce, so adds map of attrs in one go
-;; - (add-attr-to-edges k v edges) add-attr-to-edges. adds single attr to a sequential coll of edges
-
-;; ideas
-;; 1. metadata can be attached to a vector (an edge), but loom rather stores edges as :adj, :in so
-;; no vec.
-;; 2. 
+;; remove nodes
+;; remove edges
