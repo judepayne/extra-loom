@@ -11,7 +11,7 @@ Deliberately keep simple for Clojurescript compatibility; Loom is the only depen
 ## Installation
 
     [extra-loom "0.1.1"]
-
+<br/><br/>
 ## Usage
 
     (require '[extra-loom.graph :refer :all])
