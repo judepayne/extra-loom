@@ -21,6 +21,7 @@ At present, two graphs are implemented:
 - `multidigraph` (with directed edges).
 Both graphs can have multiple edges between any pairs of vertices in the graph
 <br/><br/>
+
 Weighted graphs are a `TODO`, and would require adapting some of the Loom algorithms.
 
 ### Creating a graph
