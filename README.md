@@ -101,21 +101,23 @@ will add {:color "black"} to the vertex 4.
 
 attrs can be added to edges either by specifying a precise edge, e.g.
 
+    (require '[loom.attr :as at]
+
     (def es (edges g))
     ;; ==>
     ({:id #uuid "935a8f13-7d83-4206-a01a-0c614301f260", :src 1, :dest 2}
      {:id #uuid "73900eba-fd5e-4983-aac8-17b48bcbd184", :src 1, :dest 2}
      {:id #uuid "a1ebfad4-c9b9-480d-9847-3c66f9a28167", :src 1, :dest 3})
      
-    (add-attr g (first es) :color "white")
+    (at/add-attr g (first es) :color "white")
     
 or when an edge is specified by its `src` and `dest` (and so is ambiguous in the context of a multidigraph)
 
-    (add-attr g 1 2 :color "white")
+    (at/add-attr g 1 2 :color "white")
     
 The attr would be added onto both edges between vertices 1 and 2.
 
-attrs can be fetched from vertices and edges using Loom's `loom.attr` `attr` and `attrs` functions.
+attrs can be fetched from vertices and edges using Loom's `attr` and `attrs` functions in the `loom.attr` namespace.
 
 
 ### License
