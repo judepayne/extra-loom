@@ -6,7 +6,7 @@ Clojure/ Clojurescript extension to the Loom graph library with graphs that allo
 The graphs here conform to all Loom's protocols so the richness of Loom's libraries 'just work'.
 
 Deliberately keep simple for Clojurescript compatibility; Loom is the only dependency.
-A lot of the constructs in this library were inspired by Ubergraph, which is Clojure only and unfortunately would require considerable effort to convert to Clojurescripte.
+A lot of the constructs in this library were inspired by Ubergraph, which is Clojure only and unfortunately would require considerable effort to convert to Clojurescript.
 
 ## Installation
 
