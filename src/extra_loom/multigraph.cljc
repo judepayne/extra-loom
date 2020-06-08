@@ -1,32 +1,29 @@
 (ns extra-loom.multigraph
-  (:require [extra-loom.utils
-             :refer [in? not-in? update-in-if join update-in-all dissoc-in dissoc-in-when
-                     dissoc-in-clean update-in-all-if]]
-            [loom.graph :refer [Graph ;; the Graph protocol & its members
-                                nodes edges has-node? has-edge? successors* out-degree out-edges
+  (:require
+   [extra-loom.utils
+    :refer [in? not-in? apply-to-if join update-in-all dissoc-in dissoc-in-when
+            dissoc-in-clean update-in-all-if]]
+   [loom.graph :refer [Graph ;; the Graph protocol & its members
+                       nodes edges has-node? has-edge? successors* out-degree out-edges
 
-                                Digraph ;; the Digraph protocol & its members
-                                predecessors* in-degree in-edges transpose
+                       Digraph ;; the Digraph protocol & its members
+                       predecessors* in-degree in-edges transpose
 
-                                EditableGraph ;; the EditableGraph protocol& members
-                                add-nodes* add-edges* remove-nodes* remove-edges* remove-all
+                       EditableGraph ;; the EditableGraph protocol& members
+                       add-nodes* add-edges* remove-nodes* remove-edges* remove-all
 
-                                Edge
-                                src dest
+                       Edge
+                       src dest
 
-                                ;; any more vars needed by our implementation
-                                successors predecessors
-
-                                ;; TODO REMOVE
-                                digraph
-                                graph]]
-            [loom.graph :as lg]
-            [loom.attr  :refer [AttrGraph ;; the AttrGraph protocol & its members
-                                add-attr remove-attr attr attrs]]
-            #?@(:clj [[loom.cljs :refer (def-protocol-impls)]]))
+                       ;; any more vars needed by our implementation
+                       successors predecessors]]
+   [loom.graph :as lg]
+   [loom.attr  :refer [AttrGraph ;; the AttrGraph protocol & its members
+                       add-attr remove-attr attr attrs]]
+   #?@(:clj [[loom.cljs :refer (def-protocol-impls)]]))
             #?@(:cljs [(:require-macros [loom.cljs :refer [def-protocol-impls extend]])]))
 
-;; Edge
+;; ****** Edge ******
 
 (defprotocol Identified
   (id [this] "Returns the id of this.")
@@ -94,7 +91,7 @@
            (> (count e) 1))))
 
 
-;; Graph
+;; ****** Graph ******
 
 ;; A protocol for additional utilities required by MultipleEdges (between the same two nodes).
 (defprotocol MultipleEdge
@@ -167,11 +164,14 @@
 (defn- add-node
   "Adds the node to the graph."
   [g node]
-  (let [am (:attrs (meta node))
-        g (-> g
-              (update-in [:nodemap node :out-edges] merge {})
-              (update-in [:nodemap node] assoc :in-edges (ins g node)))]
-    (if am (update-in g [:attrs] assoc node am) g)))
+  (-> g
+      (update-in [:nodemap node :out-edges] merge {})
+      (add-in-edges node)))
+
+
+(defn- add-nodes
+  "Adds the nodes to the graph."
+  [g & nodes] (reduce add-node g nodes))
 
 
 (defn- reverse-edge
@@ -180,21 +180,34 @@
   (assoc e :src (dest e) :dest (src e)))
 
 
+(defn- mirrored-edge
+  "Creates a mirrored edge."
+  [e]
+  (assoc (reverse-edge e) :mirrored? true))
+
+
+(defn- add-mirrored-edge
+  "Creates a mirrored edge of e and adds to the graph."
+  [g e]
+  (let [s (src e)
+        d (dest e)
+        e-mirror (mirrored-edge e)]
+    (-> g
+        (update-in [:nodemap d :out-edges s] (fnil conj #{}) e-mirror)
+        (update-in [:nodemap s :in-edges d] (fnil conj #{}) e-mirror))))
+
+
 (defn- add-edge
   "Adds an edge to the graph. The edge should be either a 2-vector [src dest]
-  or a 3-vector [src dest attr-map]. mirrored? indicates a mirrored edge in a grpah, not digraph."
+  or a 3-vector [src dest attr-map]. mirrored? indicates a mirrored edge in a graph, not digraph."
   [g edge & {:keys [mirrored?] :or {mirrored? false}}]
   (let [[s d am] edge   ;; destructure into src dest attrp-map
-        e (make-edge s d)
-        e' (assoc (reverse-edge e) :mirrored? true)
-        ins (ins g s)
-        g (-> g
-              (add-node s)   ;; in this form, node s has no metadata/attrs
+        e (make-edge s d)]      
+        (-> g
               (update-in [:nodemap s :out-edges d] (fnil conj #{}) e)
-              (update-in-if mirrored? [:nodemap d :out-edges s] (fnil conj #{}) e')
-              (update-in-if mirrored? [:nodemap s :in-edges d] (fnil conj #{}) e')
-              (add-node d))] ;; in this form, node d has no metadata/attrs
-        (if am (assoc-in g [:attrs (:id e)] am) g)))
+              (apply-to-if mirrored? add-mirrored-edge e)
+              (add-nodes s d) ;; to add d non-destructively & capture the in-edges for s & d.
+              (apply-to-if am assoc-in [:attrs (:id e)] am))))
 
 
 (defn- excise-edge
@@ -216,8 +229,6 @@
         (update-in [:nodemap s :in-edges] excise-edge d in-edges-after)
         (update-in [:nodemap d :out-edges] excise-edge s out-edges-after)
         (update-in [:attrs] dissoc id))))
-;; TODO
-
 
 
 (defn- remove-edge
@@ -352,7 +363,7 @@
 
 
 (def-protocol-impls ^:private impl-editablegraph
-  {:add-nodes* (fn [g nodes] (reduce add-node g nodes))
+  {:add-nodes* (fn [g nodes] (apply add-nodes g nodes))
    :add-edges* (fn [g edges] (if (digraph? g)
                                (reduce add-edge g edges)
                                (reduce #(add-edge %1 %2 :mirrored? true) g edges)))
@@ -387,6 +398,8 @@
      ([g node-or-edge] (attrs* g node-or-edge))
      ([g n1 n2] (attrs* g n1 n2)))})
 
+
+;; ****** Public API ******
 
 ;; A multigraph
 (extend MultiEdgeEditableGraph
@@ -423,19 +436,6 @@
 
 ;; building
 
-
-(defn- build-graph
-  "Builds a multidigraph from the sequence of edges-or-nodes."
-  [edges-or-nodes digraph?]
-  (reduce
-   (fn [g cur]
-     (if (edge? cur)
-       (if digraph? (add-edge g cur) (add-edge g cur :mirrored? true))
-       (add-node g cur)))
-   {}
-   edges-or-nodes))
-
-
 (defn build-graph
   "Builds up a graph (i.e. adds edges and nodes) from any combination of
   adjacency maps, edges, or nodes."
@@ -461,7 +461,6 @@
     (reduce build g inits)))
 
 
-
 (defn multigraph [& inits]
   (apply build-graph (MultiEdgeEditableGraph. {} {}) inits))
 
@@ -476,8 +475,6 @@
   (filter (complement :mirrored?) (edges g)))
 
 
-
-;; taken from Ubergraph
 (defn pprint
   "Pretty print a multidigraph"
   [g]
@@ -490,7 +487,3 @@
     (println \tab (src edge) "->" (dest edge)
              (let [a (attrs g edge)]
                (if (seq a) a "")))))
-
-
-;; remove nodes
-;; remove edges

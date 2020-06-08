@@ -12,11 +12,11 @@
   (complement in?))
 
 
-(defn update-in-if
-  "Applies f to m with args if test is true. test is a 1-arg fn passed m."
-  [m test ks f & args]
+(defn apply-to-if
+  [m test f & args]
+  "Applies f to m and m if test is true. For conditional steps in threaded -> chains."
   (if test
-    (apply update-in m ks f args)
+    (apply f m args)
     m))
 
 

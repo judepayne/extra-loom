@@ -10,7 +10,7 @@ A lot of the constructs in this library were inspired by Ubergraph, which is Clo
 
 ## Installation
 
-    [extra-loom "0.1.1"]
+    [extra-loom "0.1.2"]
 
 ## Usage
 
@@ -20,7 +20,7 @@ At present, two graphs are implemented:
 - `multigraph` (with undirected edges)
 - `multidigraph` (with directed edges).
 Both graphs can have multiple edges between any pairs of vertices in the graph.<br/>
-Weighted graphs are a `TODO` and I would welcome contributations.
+Weighted graphs are a `TODO`, but would require adapting some of the Loom algorithms.
 
 ### Creating a graph
 

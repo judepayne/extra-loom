@@ -2,7 +2,7 @@
   (:require #?(:clj [clojure.test :refer :all]
                :cljs [cljs.test :refer-macros [deftest is testing run-tests]])
             [loom.graph :as loom.graph]
-            [extra-loom.graph :as gr]
+            [extra-loom.multigraph :as gr]
             [loom.alg-generic :as loom.alg-generic]))
 
 
