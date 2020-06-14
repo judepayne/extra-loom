@@ -1,8 +1,8 @@
 (ns extra-loom.multigraph
   (:require
-   [extra-loom.utils
+   [tool-belt.core
     :refer [in? not-in? apply-to-if join update-in-all dissoc-in dissoc-in-when
-            dissoc-in-clean update-in-all-if]]
+            dissoc-in-clean update-in-all-if deep-merge-with]]
    [loom.graph :refer [Graph ;; the Graph protocol & its members
                        nodes edges has-node? has-edge? successors* out-degree out-edges
 
@@ -120,13 +120,13 @@
 
 (defn digraph?
   [g]
-  (if (satisfies? Digraph g) true false))
+  (boolean (satisfies? Digraph g)))
 
 
 (defn- has-node?*
   "Is node in g?"
   [g node]
-  (if (get-in g [:nodemap node]) true false))
+  (boolean (get-in g [:nodemap node])))
 
 
 (defn- edges*
@@ -348,8 +348,7 @@
   {:nodes (fn [g] (nodes* g))
    :edges (fn [g] (edges* g))
    :has-node? (fn [g node] (contains? (nodes* g) node))
-   :has-edge? (fn [g n1 n2] (let [m (get-in g [:nodemap n1 :out-edges])]
-                              (if (some #{n2} (keys m)) true false)))
+   :has-edge? (fn [g n1 n2] (let [m (get-in g [:nodemap n1 :out-edges])] (boolean (some #{n2} (keys m)))))
    :successors* (fn [g node] (keys (get-in g [:nodemap node :out-edges])))
    :out-degree (fn [g node] (count (join (vals (get-in g [:nodemap node :out-edges])))))
    :out-edges (fn [g node] (join (vals (get-in g [:nodemap node :out-edges]))))})
@@ -487,3 +486,9 @@
     (println \tab (src edge) "->" (dest edge)
              (let [a (attrs g edge)]
                (if (seq a) a "")))))
+
+
+(defn merge-graphs
+  "Merges multigraphs or multidigraphs."
+  [& gs]
+  (reduce (partial deep-merge-with clojure.set/union) gs))
