@@ -492,3 +492,11 @@
   "Merges multigraphs or multidigraphs."
   [& gs]
   (reduce (partial deep-merge-with clojure.set/union) gs))
+
+
+(defn extra-loom-graph?
+  "Returns true is g is an extra-loom graph."
+  [g]
+  (let [t (type g)]
+    (or (= t extra_loom.multigraph.MultiEdgeEditableDigraph)
+        (= t extra_loom.multigraph.MultiEdgeEditableGraph))))
