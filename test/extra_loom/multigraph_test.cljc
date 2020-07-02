@@ -11,6 +11,51 @@
 (defn empty-dg [] (gr/multidigraph))
 
 
+(def relationships
+  [[{:animal "pandas", :name "simone"}
+    {:animal "pandas", :name "summer"}
+    {:color "green2"}]
+   [{:animal "pandas", :name "simone"}
+    {:animal "pandas", :name "ivy"}
+    {:color "green2"}]
+   [{:animal "brownbears", :name "cosmo"}
+    {:animal "brownbears", :name "eliza"}
+    {:color "deeppink"}]
+   [{:animal "pandas", :name "kacey"}
+    {:animal "brownbears", :name "cosmo"}
+    {:color "deeppink"}]
+   [{:animal "pandas", :name "ivy"}
+    {:animal "squirrels", :name "huxley"}
+    {:color "red"}]
+   [{:animal "pandas", :name "max"}
+    {:animal "pandas", :name "Bridget"}
+    {:color "blue"}]
+   [{:animal "pandas", :name "malakai"}
+    {:animal "pandas", :name "ivy"}
+    nil]
+   [{:animal "pandas", :name "kacey"}
+    {:animal "pandas", :name "shahar"}
+    {:meta {:relationship "friend"}}]
+   [{:animal "pandas", :name "cristolene"}
+    {:animal "pandas", :name "shahar"}
+    {:color "deeppink", :meta {:relationship "friend"}}]
+   [{:animal "pandas", :name "malakai"}
+    {:animal "pandas", :name "delila"}
+    nil]
+   [{:animal "pandas", :name "nikkai"}
+    {:animal "pandas", :name "isobel"}
+    nil]
+   [{:animal "pandas", :name "shahar"}
+    {:animal "pandas", :name "summer"}
+    nil]
+   [{:animal "pandas", :name "simone"}
+    {:animal "pandas", :name "max"}
+    {:meta {:relationship "enemy"}}]
+   [{:animal "pandas", :name "simone"}
+    {:animal "pandas", :name "max"}
+    {:meta {:relationship "friend"}}]])
+
+
 (defn idedges->vec [es] (map (juxt loom/src loom/dest) es))
 
 
@@ -128,11 +173,17 @@
       (is (= [[2 0] [0 2]]
              (idedges->vec (loom/edges (loom/remove-nodes* g [1])))))))
 
-  (testing "remove-nodes leaving empties in :adj with multidigraph"
+  (testing "remove-edges"
     (let [g (-> (empty-g)
                 (loom/add-edges* [[1 2] [1 2] [0 2]]))]
       (is (= [[2 0] [0 2]]
-             (idedges->vec (loom/edges (loom/remove-edges* g [[1 2]]))))))))
+             (idedges->vec (loom/edges (loom/remove-edges* g [[1 2]])))))))
+
+  (testing "remove multiple edge"
+    (let [g (-> (empty-g)
+                (loom/add-edges* [[1 2] [1 2]]))]
+      (is (= 2
+             (count (loom/edges (loom/remove-edges* g [(first (loom.graph/edges g))]))))))))
 
 
 (deftest EditableGraph-protocol:Digraph
@@ -149,11 +200,17 @@
       (is (= [[0 2]]
              (idedges->vec (loom/edges (loom/remove-nodes* g [1])))))))
 
-  (testing "remove-nodes leaving empties in :adj with multidigraph"
+  (testing "remove-edges"
     (let [g (-> (empty-dg)
                 (loom/add-edges* [[1 2] [1 2] [0 2]]))]
       (is (= [[0 2]]
-             (idedges->vec (loom/edges (loom/remove-edges* g [[1 2]]))))))))
+             (idedges->vec (loom/edges (loom/remove-edges* g [[1 2]])))))))
+
+  (testing "remove multiple edge"
+    (let [g (-> (empty-dg)
+                (loom/add-edges* [[1 2] [1 2]]))]
+      (is (= 1
+             (count (loom/edges (loom/remove-edges* g [(first (loom.graph/edges g))]))))))))
 
 
 (deftest Building-a-graph:All
