@@ -118,6 +118,20 @@
 (defrecord MultiEdgeEditableGraph [nodemap attrs])
 
 
+(defn- multigraph?
+  "Returns true is g is a multigraph."
+  [g]
+  (let [t (type g)]
+    (= t extra_loom.multigraph.MultiEdgeEditableGraph)))
+
+
+(defn- multidigraph?
+  "Returns true is g is a multidigraph."
+  [g]
+  (let [t (type g)]
+    (= t extra_loom.multigraph.MultiEdgeEditableDigraph)))
+
+
 (defn digraph?
   [g]
   (boolean (satisfies? Digraph g)))
@@ -222,13 +236,16 @@
   [g e]
   (let [{s :src d :dest id :id} e
         out-edges-after (disj (edges-between* g s d) e)
-        in-edges-after (disj (edges-between* g d s) e)]
-    (-> g
-        (update-in [:nodemap s :out-edges] excise-edge d out-edges-after)
-        (update-in [:nodemap d :in-edges] excise-edge s in-edges-after)
-        (update-in [:nodemap s :in-edges] excise-edge d in-edges-after)
-        (update-in [:nodemap d :out-edges] excise-edge s out-edges-after)
-        (update-in [:attrs] dissoc id))))
+        in-edges-after (disj (edges-between* g d s) e)
+        g' (-> g
+               (update-in [:nodemap s :out-edges] excise-edge d out-edges-after)
+               (update-in [:nodemap d :in-edges] excise-edge s in-edges-after)
+               (update-in [:attrs] dissoc id))]
+    (if (multidigraph? g')
+      g'
+      (-> g'
+          (update-in [:nodemap s :in-edges] excise-edge d in-edges-after)
+          (update-in [:nodemap d :out-edges] excise-edge s out-edges-after)))))
 
 
 (defn- remove-edge
@@ -466,6 +483,9 @@
 
 (defn multidigraph [& inits]
   (apply build-graph (MultiEdgeEditableDigraph. {} {}) inits))
+
+
+;; Various useful functions
 
 
 (defn distinct-edges
