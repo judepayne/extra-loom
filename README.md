@@ -10,11 +10,11 @@ A lot of the constructs in this library were inspired by Ubergraph, which is Clo
 
 ## Installation
 
-    [extra-loom "0.1.6"]
+    [extra-loom "0.1.7"]
 
 ## Usage
 
-    (require '[extra-loom.graph :refer :all])
+    (require '[extra-loom.multigraph :refer :all])
 
 At present, two graphs are implemented:
 - `multigraph` (with undirected edges)
