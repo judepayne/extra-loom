@@ -12,7 +12,7 @@ A lot of the constructs in this library were inspired by Ubergraph, which is Clo
 
     [extra-loom "0.1.8"]
 
-## Usage 
+## Usage
 
     (require '[extra-loom.multigraph :refer :all])
 
