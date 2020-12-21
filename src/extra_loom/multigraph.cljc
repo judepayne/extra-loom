@@ -1,5 +1,6 @@
 (ns extra-loom.multigraph
   (:require
+   [clojure.set :as s]
    [tool-belt.core
     :refer [in? not-in? apply-to-if join update-in-all dissoc-in dissoc-in-when
             dissoc-in-clean update-in-all-if deep-merge-with]]
@@ -64,10 +65,17 @@
     src dest mirrored?)))
 
 
+(defn vec?
+  "Is v a vector?"
+  [v]
+  (instance? #?(:clj clojure.lang.IPersistentVector
+                :cljs cljs.core.PersistentVector) v))
+
+
 (defn unique-edge?
   "Is e a UniqueEdge?"
   [e]
-  (instance? UniqueEdge e))
+  (and (satisfies? Identified e) (satisfies? lg/Edge e)))
 
 
 (defn edge-equiv?
@@ -86,8 +94,7 @@
   "Is e an edge?"
   [e]
   (or (unique-edge? e)
-      (and (instance? #?(:clj clojure.lang.IPersistentVector
-                        :cljs cljs.core.PersistentVector) e)
+      (and (vec? e)
            (> (count e) 1))))
 
 
@@ -95,7 +102,8 @@
 
 ;; A protocol for additional utilities required by MultipleEdges (between the same two nodes).
 (defprotocol MultipleEdge
-  (edges-between [g n1 n2] "Returns the edges in g between two nodes."))
+  (edges-between [g n1 n2] "Returns the edges in g between two nodes.")
+  (add-multi-edge [g n1 n2 attr-maps] "Adds multiple edges in g between two nodes."))
 
 
 (defn edges-between* [g n1 n2] (get-in g [:nodemap n1 :out-edges n2]))
@@ -215,13 +223,34 @@
   "Adds an edge to the graph. The edge should be either a 2-vector [src dest]
   or a 3-vector [src dest attr-map]. mirrored? indicates a mirrored edge in a graph, not digraph."
   [g edge & {:keys [mirrored?] :or {mirrored? false}}]
-  (let [[s d am] edge   ;; destructure into src dest attrp-map
-        e (make-edge s d)]      
-        (-> g
-              (update-in [:nodemap s :out-edges d] (fnil conj #{}) e)
-              (apply-to-if mirrored? add-mirrored-edge e)
-              (add-nodes s d) ;; to add d non-destructively & capture the in-edges for s & d.
-              (apply-to-if am assoc-in [:attrs (:id e)] am))))
+  (cond
+    (vec? edge)
+    (let [[s d am] edge   ;; destructure into src dest attrp-map
+          e (make-edge s d)]      
+      (-> g
+          (update-in [:nodemap s :out-edges d] (fnil conj #{}) e)
+          (apply-to-if mirrored? add-mirrored-edge e)
+          (add-nodes s d) ;; to add d non-destructively & capture the in-edges for s & d.
+          (apply-to-if am assoc-in [:attrs (:id e)] am)))
+
+    ;; We have some type satisfying the Edge and Indentified protocols
+    (unique-edge? edge)
+    (let [mirrored? (:mirrored? edge)
+          s (lg/src edge)
+          d (lg/dest edge)]
+      (-> g
+          (update-in [:nodemap s :out-edges d] (fnil conj #{}) edge)
+          (apply-to-if mirrored? add-mirrored-edge edge)
+          (add-nodes s d)
+))))
+
+
+(defn- add-multi-edge*
+  "Add multiple edges between two nodes in the graph. attr-maps is a sequence of maps.
+  An edge is added for each attr-map"
+  [g n1 n2 attr-maps & {:keys [mirrored?] :or {mirrored? false}}]
+  (let [f (fn [g' edge] (add-edge g' edge :mirrored? mirrored?))]
+    (reduce f g (partition 3 (flatten (interleave (repeat [n1 n2]) attr-maps))))))
 
 
 (defn- excise-edge
@@ -389,7 +418,10 @@
 
 
 (def-protocol-impls ^:prviate impl-multipleedge
-  {:edges-between (fn [g n1 n2] (edges-between* g n1 n2))})
+  {:edges-between (fn [g n1 n2] (edges-between* g n1 n2))
+   :add-multi-edge (fn [g n1 n2 attr-maps] (if (digraph? g)
+                                                 (add-multi-edge* g n1 n2 attr-maps)
+                                                 (add-multi-edge* g n1 n2 attr-maps :mirrored? true)))})
 
 
 (def-protocol-impls ^:private impl-attrgraph
@@ -458,6 +490,9 @@
   [g & inits]
   (letfn [(build [g init]
             (cond
+             ;; edge
+             (edge? init) (add-edges* g [init])
+
              ;; adacency map
              (map? init)
              (let [es (if (map? (val (first init)))
@@ -470,8 +505,7 @@
                (-> g
                    (add-nodes* (keys init))
                    (add-edges* es)))
-             ;; edge
-             (edge? init) (add-edges* g [init])
+
              ;; node
              :else (add-node g init)))]
     (reduce build g inits)))
@@ -511,7 +545,7 @@
 (defn merge-graphs
   "Merges multigraphs or multidigraphs."
   [& gs]
-  (reduce (partial deep-merge-with clojure.set/union) gs))
+  (reduce (partial deep-merge-with s/union) gs))
 
 
 (defn extra-loom-graph?

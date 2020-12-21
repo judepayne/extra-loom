@@ -10,7 +10,7 @@ A lot of the constructs in this library were inspired by Ubergraph, which is Clo
 
 ## Installation
 
-    [extra-loom "0.1.7"]
+    [extra-loom "0.1.8"]
 
 ## Usage
 
