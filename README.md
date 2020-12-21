@@ -31,6 +31,8 @@ Similar to Loom.
     (def g (multigraph [1 2] [1 2] [0 2]))                ;; edges
     (def dg (multidigraph [1 2] [1 2] 0))                 ;; with an additional node
     (def dg (multidigraph {1 [2 2] 0 [2]}                 ;; adjacency list
+    
+You can also create graphs with custom edge types that you have made. A custom edge type must implement the Loom `Edge` protocol and also the Extra-Loom `Identified` protocol.
 
 Unlike Loom, edge attributes can be defined at creation:
 
