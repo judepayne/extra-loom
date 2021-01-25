@@ -528,18 +528,20 @@
   (filter (complement :mirrored?) (edges g)))
 
 
-(defn pprint
-  "Pretty print a multidigraph"
-  [g]
-  (println "Multidigraph")
-  (println (count (nodes g)) "Nodes:")
-  (doseq [node (nodes g)]
-    (println \tab node (let [a (attrs g node)] (if (seq a) a ""))))
-  (println (count (edges g)) "Edges:")
-  (doseq [edge (edges g)]
-    (println \tab (src edge) "->" (dest edge)
-             (let [a (attrs g edge)]
-               (if (seq a) a "")))))
+(defn pprint-graph
+  "Pretty print a multidigraph. node-fn is a function that transform a node for display. Similarity
+  edge-fn for an edge."
+  ([g] (pprint-graph g identity identity identity))
+  ([g node-fn edge-fn attr-fn]
+   (println "Multidigraph")
+   (println (count (nodes g)) "Nodes:")
+   (doseq [node (nodes g)]
+     (println \tab (node-fn node) (let [a (attrs g node)] (if (seq a) (attr-fn a) ""))))
+   (println (count (edges g)) "Edges:")
+   (doseq [edge (edges g)]
+     (println \tab (edge-fn edge)
+              (let [a (attrs g edge)]
+                (if (seq a) a ""))))))
 
 
 (defn merge-graphs
