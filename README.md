@@ -5,7 +5,7 @@
 Clojure/ Clojurescript extension to the Loom graph library with graphs that allow multiple edges between the same vetices.
 The graphs here conform to all Loom's protocols so the richness of Loom's libraries 'just work'.
 
-Deliberately keep simple for Clojurescript compatibility; Loom is the only dependency.
+Clojurescript compatible.
 A lot of the constructs in this library were inspired by Ubergraph, which is Clojure only and unfortunately would require considerable effort to convert to Clojurescript.
 
 ## Installation
@@ -37,6 +37,9 @@ You can also create graphs with custom edge types that you have made. A custom e
 Unlike Loom, edge attributes can be defined at creation:
 
     (def g (multidigraph [1 2] [2 3] [2 3] [1 2] [1 3 {:sugar true}] 4))
+
+
+For graphs where both nodes and edges are specified as maps, use the `multigraph2` and `multidigraph2` creation functions. These functions take a collection of nodes, a `node-key` which is the key in the map that uniquely identifies each node and a collection of edges.
 
 
 ### Using a graph
@@ -121,6 +124,10 @@ or when an edge is specified by its `src` and `dest` (and so is ambiguous in the
 The attr would be added onto both edges between vertices 1 and 2.
 
 attrs can be fetched from vertices and edges using Loom's `attr` and `attrs` functions in the `loom.attr` namespace.
+
+### Useful extras
+
+In the `useful` namespace are several convenience functions for common graph operations and tests (that are not part of the loom algorithm set), for printing a representation of a graph and for covnerting a graph to dictim my visualization format that converts to d2.
 
 
 ### License

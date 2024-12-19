@@ -1,4 +1,7 @@
 {:paths ["src"]
- :deps {org.clojure/clojure             {:mvn/version "1.10.1"}
+ :deps {org.clojure/clojure             {:mvn/version "1.12.0"}
         aysylu/loom                     {:mvn/version "1.0.2"}
-        tool-belt/tool-belt                       {:mvn/version "0.1.0"}}}
+        tool-belt/tool-belt             {:mvn/version "0.1.0"}
+        io.github.judepayne/dictim {:git/tag "0.8.8" :git/sha "75723f0"}
+        io.github.judepayne/dictim.graph {:local/root "../dictim.graph"} ;{:git/tag "0.1.5" :git/sha "67f4507"}
+        }}

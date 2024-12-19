@@ -24,6 +24,13 @@
    #?@(:clj [[loom.cljs :refer (def-protocol-impls)]]))
             #?@(:cljs [(:require-macros [loom.cljs :refer [def-protocol-impls extend]])]))
 
+
+(defn error
+  "Creates an exception object with error-string."
+  [error-string]
+  #?(:clj (Exception. ^String error-string)
+     :cljs (js/Error. error-string)))
+
 ;; ****** Edge ******
 
 (defprotocol Identified
@@ -94,6 +101,8 @@
   "Is e an edge?"
   [e]
   (or (unique-edge? e)
+      ;; a map with :src & Ldest entries is an edge for the purposes of building
+      (and (map? e) (lg/src e) (lg/dest e))
       (and (vec? e)
            (> (count e) 1))))
 
@@ -241,8 +250,20 @@
       (-> g
           (update-in [:nodemap s :out-edges d] (fnil conj #{}) edge)
           (apply-to-if mirrored? add-mirrored-edge edge)
-          (add-nodes s d)
-))))
+          (add-nodes s d)))
+
+    ;; called during initial build. we already know edge is a valid edge
+    (map? edge)
+    (let [[s d] ((juxt :src :dest) edge)
+          am (dissoc edge :src :dest)
+          e (make-edge s d)]
+      (-> g
+          (update-in [:nodemap s :out-edges d] (fnil conj #{}) e)
+          (apply-to-if mirrored? add-mirrored-edge e)
+          (add-nodes s d) ;; to add d non-destructively & capture the in-edges for s & d.
+          (apply-to-if am assoc-in [:attrs (:id e)] am)))
+
+    :else (throw (error (str edge " is not a valid edge.")))))
 
 
 (defn- add-multi-edge*
@@ -494,7 +515,7 @@
              (edge? init) (add-edges* g [init])
 
              ;; adacency map
-             (map? init)
+             (and (map? init) (every? vec? (vals init)))
              (let [es (if (map? (val (first init)))
                         (for [[n nbrs] init
                               [nbr wt] nbrs]
@@ -506,7 +527,7 @@
                    (add-nodes* (keys init))
                    (add-edges* es)))
 
-             ;; node
+             ;; node (inc. nodes reperesented by a map
              :else (add-node g init)))]
     (reduce build g inits)))
 
@@ -519,36 +540,39 @@
   (apply build-graph (MultiEdgeEditableDigraph. {} {}) inits))
 
 
-;; Various useful functions
+(defn add-attrs [g node attr-map]
+  (reduce (fn [a [atk atv]]
+            (add-attr a node atk atv))
+          g
+          attr-map))
 
 
-(defn distinct-edges
-  "The distinct edges in the graph. eliminates mirrored edges."
-  [g]
-  (filter (complement :mirrored?) (edges g)))
+(defn build-graph2
+  "Builds up a graph where all nodes are represented by maps, all edges are
+   represented by maps and node-key is the key that returns the unique
+   id of each node. In edges, src and dest are refs to the node's unique
+   id rather than repeating the node again. g is the graph that the 
+   nodes and edges are to be added to."
+  [g nodes node-key edges]
+  {:pre [(every? map? nodes) (every? map? edges)]}
+  (letfn [(build-node [g node]
+            (let [nv (get node node-key)]
+              (-> g
+                  (add-node nv)
+                  (add-attrs nv (dissoc node node-key)))))]
+    (let [g (reduce build-node g nodes)]
+      (add-edges* g edges))))
 
 
-(defn pprint-graph
-  "Pretty print a multidigraph. node-fn is a function that transform a node for display. Similarity
-  edge-fn for an edge."
-  ([g] (pprint-graph g identity identity identity))
-  ([g node-fn edge-fn attr-fn]
-   (println "Multidigraph")
-   (println (count (nodes g)) "Nodes:")
-   (doseq [node (nodes g)]
-     (println \tab (node-fn node) (let [a (attrs g node)] (if (seq a) (attr-fn a) ""))))
-   (println (count (edges g)) "Edges:")
-   (doseq [edge (edges g)]
-     (println \tab (edge-fn edge)
-              (let [a (attrs g edge)]
-                (if (seq a) a ""))))))
+(defn multigraph2 [nodes node-key edges]
+  (build-graph2 (MultiEdgeEditableGraph. {} {}) nodes node-key edges))
 
 
-(defn merge-graphs
-  "Merges multigraphs or multidigraphs."
-  [& gs]
-  (reduce (partial deep-merge-with s/union) gs))
+(defn multidigraph2 [nodes node-key edges]
+  (build-graph2 (MultiEdgeEditableDigraph. {} {}) nodes node-key edges))
 
+
+;; testing type
 
 (defn extra-loom-graph?
   "Returns true is g is an extra-loom graph."
@@ -556,3 +580,15 @@
   (let [t (type g)]
     (or (= t extra_loom.multigraph.MultiEdgeEditableDigraph)
         (= t extra_loom.multigraph.MultiEdgeEditableGraph))))
+
+
+(defn multigraph?
+  "Returns true is g in an extra-loom multigraph."
+  [g]
+  (= (type g) extra_loom.multigraph.MultiEdgeEditableGraph))
+
+
+(defn multidigraph?
+  "Returns true is g in an extra-loom multidigraph."
+  [g]
+  (= (type g) extra_loom.multigraph.MultiEdgeEditableDigraph))
