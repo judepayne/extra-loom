@@ -97,14 +97,16 @@
 (defn graph->dictim
   "Converts a graph to dictim."
   [graph
-   & {:keys [node-attrs->dictim-attrs
+   & {:keys [node-key
+             node-attrs->dictim-attrs
              edge-attrs->dictim-attrs
              node->cluster
              cluster->parent
              cluster->attrs
              template
              directives]
-      :or {node-attrs->dictim-attrs (constantly nil)
+      :or {node-key nil
+           node-attrs->dictim-attrs (constantly nil)
            edge-attrs->dictim-attrs (constantly nil)
            node->cluster (constantly nil)
            cluster->parent (constantly nil)
@@ -117,7 +119,12 @@
         dict (dg/graph->dictim nodes
                                (lg/edges graph)
                                {:node->key identity
-                                :node->attrs (fn [node] (node-attrs->dictim-attrs (at/attrs graph node)))
+                                :node->attrs (if node-key
+                                               (fn [node] (node-attrs->dictim-attrs
+                                                           (merge
+                                                            {node-key node}
+                                                            (at/attrs graph node))))
+                                               (fn [node] (node-attrs->dictim-attrs (at/attrs graph node))))
                                 :edge->attrs (fn [edge] (edge-attrs->dictim-attrs (at/attrs graph edge)))
                                 :edge->src-key lg/src
                                 :edge->dest-key lg/dest
