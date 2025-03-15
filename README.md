@@ -10,8 +10,10 @@ A lot of the constructs in this library were inspired by Ubergraph, which is Clo
 
 ## Installation
 
+deps.edn coords:
 
-    io.github.judepayne/extra-loom {:git/tag "0.2.0" :git/sha "7905e86"}
+
+    io.github.judepayne/extra-loom {:git/tag "0.2.1" :git/sha "528cbe6"}
 
 
 ## Usage
