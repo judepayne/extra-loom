@@ -553,13 +553,15 @@
    id of each node. In edges, src and dest are refs to the node's unique
    id rather than repeating the node again. g is the graph that the 
    nodes and edges are to be added to."
-  [g nodes node-key edges]
+  [g nodes node-key edges & {:keys [include-node-key-in-attrs?] :or {include-node-key-in-attrs? false}}]
   {:pre [(every? map? nodes) (every? map? edges)]}
   (letfn [(build-node [g node]
             (let [nv (get node node-key)]
               (-> g
                   (add-node nv)
-                  (add-attrs nv (dissoc node node-key)))))]
+                  (add-attrs nv (if include-node-key-in-attrs?
+                                  node
+                                  (dissoc node node-key))))))]
     (let [g (reduce build-node g nodes)]
       (add-edges* g edges))))
 

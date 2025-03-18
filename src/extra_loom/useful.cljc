@@ -187,3 +187,57 @@
   "Merges multigraphs or multidigraphs."
   [& gs]
   (reduce (partial deep-merge-with s/union) gs))
+
+
+(defn -prewalk-attrs-impl
+  "Returns an updated graph where f is applied between a node of each of its children,
+   and so on recursively. If no node is specified, checks if g is a tree and starts
+   at its root, or throws an error. The graph must be a tree"
+  [g nd f]
+  (letfn [(down [g parent node]
+            (let [new-attrs (f (at/attrs g parent) (at/attrs g node))
+                  g (mg/add-attrs g node new-attrs)]
+              (if-let [succs (lg/successors g node)]
+                (reduce
+                 (fn [acc cur]
+                   (mg/add-attrs (down acc node cur) node new-attrs))
+                 g
+                 succs)
+                g)))]
+    (down g nd nd)))
+
+
+(defn prewalk-attrs
+  "Prewalks the tree starting at node, applying f to the attrs of the node
+   and each of its successors, recursively. Returns the updated tree.
+   If node is not provided, starts at the tree's root."
+  ([tree f]
+   {:pre [(tree? tree)]}
+   (-prewalk-attrs-impl tree (first (roots tree)) f))
+  ([tree node f]
+   {:pre [(tree? tree)]}
+   (-prewalk-attrs-impl tree node f)))
+
+
+(defn -postwalk-attrs-impl
+  "implementation of postwalk-attrs"
+  [tree node f]
+  (if-let [succs (lg/successors tree node)]
+    (let [tree' (reduce (fn [a c] (-postwalk-attrs-impl a c f)) tree succs)]
+      (mg/add-attrs
+       tree'
+       node
+       (f (at/attrs tree' node) (map (partial at/attrs tree') succs))))
+    tree))
+
+
+(defn postwalk-attrs
+  "Postwalks the tree starting at node, applying f to the attrs of node
+   and a sequence of the attrs of its children. Returns the updated tree.
+   If node is not provided, starts at the tree's root."
+  ([tree f]
+   {:pre [(tree? tree)]}
+   (-postwalk-attrs-impl tree (roots tree) f))
+  ([tree node f]
+   {:pre [(tree? tree)]}
+   (-postwalk-attrs-impl tree node f)))
