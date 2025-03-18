@@ -13,7 +13,7 @@ A lot of the constructs in this library were inspired by Ubergraph, which is Clo
 deps.edn coords:
 
 
-    io.github.judepayne/extra-loom {:git/tag "0.2.1" :git/sha "528cbe6"}
+    io.github.judepayne/extra-loom {:git/tag "0.2.2" :git/sha "7f3f8e8"}
 
 
 ## Usage
