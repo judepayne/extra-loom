@@ -566,12 +566,12 @@
       (add-edges* g edges))))
 
 
-(defn multigraph2 [nodes node-key edges]
-  (build-graph2 (MultiEdgeEditableGraph. {} {}) nodes node-key edges))
+(defn multigraph2 [nodes node-key edges & ks]
+  (apply build-graph2 (MultiEdgeEditableGraph. {} {}) nodes node-key edges ks))
 
 
-(defn multidigraph2 [nodes node-key edges]
-  (build-graph2 (MultiEdgeEditableDigraph. {} {}) nodes node-key edges))
+(defn multidigraph2 [nodes node-key edges & ks]
+  (apply build-graph2 (MultiEdgeEditableDigraph. {} {}) nodes node-key edges ks))
 
 
 ;; testing type
