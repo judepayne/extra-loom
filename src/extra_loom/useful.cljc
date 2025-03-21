@@ -130,7 +130,8 @@
                                 :edge->dest-key lg/dest
                                 :node->cluster node->cluster
                                 :cluster->parent cluster->parent
-                                :cluster->attrs cluster->attrs})]
+                                :cluster->attrs cluster->attrs
+                                :directives directives})]
     (if template (tmp/apply-template dict {:template template
                                            :directives directives
                                            :merge? true})
@@ -191,8 +192,7 @@
 
 (defn -prewalk-attrs-impl
   "Returns an updated graph where f is applied between a node of each of its children,
-   and so on recursively. If no node is specified, checks if g is a tree and starts
-   at its root, or throws an error. The graph must be a tree"
+   and so on recursively."
   [g nd f]
   (letfn [(down [g parent node]
             (let [new-attrs (f (at/attrs g parent) (at/attrs g node))
