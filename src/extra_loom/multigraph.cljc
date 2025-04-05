@@ -553,7 +553,9 @@
    id of each node. In edges, src and dest are refs to the node's unique
    id rather than repeating the node again. g is the graph that the 
    nodes and edges are to be added to."
-  [g nodes node-key edges & {:keys [include-node-key-in-attrs?] :or {include-node-key-in-attrs? false}}]
+  [g nodes node-key edges & {:keys [include-node-key-in-attrs? include-edge-src-dest?]
+                             :or {include-node-key-in-attrs? false
+                                  include-edge-src-dest? false}}]
   {:pre [(every? map? nodes) (every? map? edges)]}
   (letfn [(build-node [g node]
             (let [nv (get node node-key)]
@@ -562,8 +564,18 @@
                   (add-attrs nv (if include-node-key-in-attrs?
                                   node
                                   (dissoc node node-key))))))]
-    (let [g (reduce build-node g nodes)]
-      (add-edges* g edges))))
+    (let [g (reduce build-node g nodes)
+          g (add-edges* g edges)
+          es (lg/edges g)]
+      (if include-edge-src-dest?
+        (reduce
+         (fn [g e]
+           (-> g
+               (add-attr e :src (:src e))
+               (add-attr e :dest (:dest e))))
+         g
+         es)
+        g))))
 
 
 (defn multigraph2 [nodes node-key edges & ks]

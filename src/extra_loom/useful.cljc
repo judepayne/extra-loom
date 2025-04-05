@@ -94,6 +94,12 @@
   (not (boolean (alg/topsort g))))
 
 
+;; need
+;; 1. for madrkdown, cannot use :label. need a new node->label fn
+;; 2. supply node->cluster, need to remap edges so dest is the cluster
+;;    - I can do this already by comp'ing lg/dest & node->cluster
+
+
 (defn graph->dictim
   "Converts a graph to dictim."
   [graph
@@ -103,6 +109,8 @@
              node->cluster
              cluster->parent
              cluster->attrs
+             edge->src-key
+             edge->dest-key
              template
              directives]
       :or {node-key nil
@@ -111,6 +119,8 @@
            node->cluster (constantly nil)
            cluster->parent (constantly nil)
            cluster->attrs (constantly nil)
+           edge->src-key lg/src
+           edge->dest-key lg/dest
            template nil
            directives nil}
       :as opts}]
@@ -126,8 +136,8 @@
                                                             (at/attrs graph node))))
                                                (fn [node] (node-attrs->dictim-attrs (at/attrs graph node))))
                                 :edge->attrs (fn [edge] (edge-attrs->dictim-attrs (at/attrs graph edge)))
-                                :edge->src-key lg/src
-                                :edge->dest-key lg/dest
+                                :edge->src-key edge->src-key
+                                :edge->dest-key edge->dest-key
                                 :node->cluster node->cluster
                                 :cluster->parent cluster->parent
                                 :cluster->attrs cluster->attrs
@@ -184,18 +194,27 @@
     (every? #(contains? nds %) es)))
 
 
+(defn- merge-fn [& ns]
+  (if (every? coll? ns)
+    (apply s/union ns)
+    (last ns)))
+
+
 (defn merge-graphs
   "Merges multigraphs or multidigraphs."
   [& gs]
-  (reduce (partial deep-merge-with s/union) gs))
+  (reduce (partial deep-merge-with merge-fn) gs))
 
 
-(defn -prewalk-attrs-impl
-  "Returns an updated graph where f is applied between a node of each of its children,
-   and so on recursively."
-  [g nd f]
+(defn prewalk-tree
+  "Prewalks the tree (specified as a loom graph), starting at node.
+   f is a function is the current graph, a node's parent and the node itself
+   that must return the new attrs to be assigned to the node.
+   Returns the edited tree."
+  [tree node f]
+  {:pre [(tree? tree)]}
   (letfn [(down [g parent node]
-            (let [new-attrs (f (at/attrs g parent) (at/attrs g node))
+            (let [new-attrs (f g parent node)
                   g (mg/add-attrs g node new-attrs)]
               (if-let [succs (lg/successors g node)]
                 (reduce
@@ -204,40 +223,74 @@
                  g
                  succs)
                 g)))]
-    (down g nd nd)))
+    (down tree node node)))
 
 
 (defn prewalk-attrs
   "Prewalks the tree starting at node, applying f to the attrs of the node
    and each of its successors, recursively. Returns the updated tree.
-   If node is not provided, starts at the tree's root."
-  ([tree f]
-   {:pre [(tree? tree)]}
-   (-prewalk-attrs-impl tree (first (roots tree)) f))
-  ([tree node f]
-   {:pre [(tree? tree)]}
-   (-prewalk-attrs-impl tree node f)))
+   If node is not provided as the keyword argument `:node`, starts at
+   the tree's root.
+   The keyword argument `:consumes-edge-attrs?` determines if f is a 2-arity
+   fn (the parent node's attributes and the current node's) or a 3-arity fn
+   - as above but the third argument being the attrs of the edge between the
+   two nodes."
+  [tree f & {:keys [consumes-edge-attrs? node]
+               :or {consumes-edge-attrs? false node (first (roots tree))}}]
+  (prewalk-tree tree
+                node
+                (if (not consumes-edge-attrs?)
+                  
+                  (fn [g parent node]
+                    (f (at/attrs g parent) (at/attrs g node)))
+
+                  (fn [g parent node]
+                    (f (at/attrs g parent)
+                       (at/attrs g node)
+                       (second (first (at/attrs g parent node))))))))
 
 
-(defn -postwalk-attrs-impl
-  "implementation of postwalk-attrs"
+(defn postwalk-tree
+  "Postwalks the tree (specified as a loom graph), starting at node.
+   f is a function of the current graph, the current node's attrs
+   and a seq of the attrs of its child nodes, and should return
+   the new attrs to be assigned to the node.
+   Returns the edited tree."
   [tree node f]
+  {:pre [(tree? tree)]}
   (if-let [succs (lg/successors tree node)]
-    (let [tree' (reduce (fn [a c] (-postwalk-attrs-impl a c f)) tree succs)]
+    (let [tree' (reduce (fn [a c] (postwalk-tree a c f)) tree succs)]
       (mg/add-attrs
        tree'
        node
-       (f (at/attrs tree' node) (map (partial at/attrs tree') succs))))
+       (f tree' node succs)))
     tree))
 
 
 (defn postwalk-attrs
   "Postwalks the tree starting at node, applying f to the attrs of node
    and a sequence of the attrs of its children. Returns the updated tree.
-   If node is not provided, starts at the tree's root."
-  ([tree f]
-   {:pre [(tree? tree)]}
-   (-postwalk-attrs-impl tree (roots tree) f))
-  ([tree node f]
-   {:pre [(tree? tree)]}
-   (-postwalk-attrs-impl tree node f)))
+   If node is not provided as the keyword argument `:node`, starts at the
+   tree's root.
+   The keyword argument `:consumes-edge-attrs?` determines if the second
+   argument passed to f is a sequence of the child nodes' attrs or a
+   sequence of maps of form
+   `{:succ-attrs ..<the child node's attrs>
+     :edges-attrs ..<the attrs of the edge between the two>}`"
+  [tree f & {:keys [consumes-edge-attrs? node]
+               :or {consumes-edge-attrs? false node (first (roots tree))}}]
+  {:pre [(tree? tree)]}
+  (postwalk-tree tree node
+                 (if (not consumes-edge-attrs?)
+                   
+                   (fn [g node succs]
+                     (f (at/attrs g node) (map (partial at/attrs g) succs)))
+                   
+                   (fn [g node succs]
+                     (f (at/attrs g node)
+                        (reduce
+                         (fn [acc s]
+                           (conj acc {:succ-attrs (at/attrs g s)
+                                      :edge-attrs (second (first (at/attrs g node s)))}))
+                         nil
+                         succs))))))
