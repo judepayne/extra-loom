@@ -194,16 +194,17 @@
     (every? #(contains? nds %) es)))
 
 
-(defn- merge-fn [& ns]
+(defn- merge-fn [f & ns]
   (if (every? coll? ns)
     (apply s/union ns)
-    (last ns)))
+    (apply f ns)))
 
 
 (defn merge-graphs
-  "Merges multigraphs or multidigraphs."
-  [& gs]
-  (reduce (partial deep-merge-with merge-fn) gs))
+  "Merges multigraphs or multidigraphs.
+  f is applied to any collections with themselves are not all collections."
+  [f & gs]
+  (reduce (partial deep-merge-with (partial merge-fn f)) gs))
 
 
 (defn prewalk-tree
