@@ -3,8 +3,10 @@
    [tool-belt.core
     :refer [in? not-in? apply-to-if join update-in-all dissoc-in dissoc-in-when
             dissoc-in-clean update-in-all-if deep-merge-with]]
-   [loom.graph :as lg]
+   [loom.graph :refer [successors*]
+    :as lg]
    [loom.alg :as alg]
+   [loom.alg-generic :as gen]
    [loom.attr :as at]
    [dictim.graph.core :as dg]
    [dictim.template :as tmp]
@@ -197,7 +199,8 @@
 (defn- merge-fn [f & ns]
   (if (every? coll? ns)
     (apply s/union ns)
-    (apply f ns)))
+    (do (println ns)
+        (f ns))))
 
 
 (defn merge-graphs
@@ -279,7 +282,7 @@
    `{:succ-attrs ..<the child node's attrs>
      :edges-attrs ..<the attrs of the edge between the two>}`"
   [tree f & {:keys [consumes-edge-attrs? node]
-               :or {consumes-edge-attrs? false node (first (roots tree))}}]
+             :or {consumes-edge-attrs? false node (first (roots tree))}}]
   {:pre [(tree? tree)]}
   (postwalk-tree tree node
                  (if (not consumes-edge-attrs?)
@@ -295,3 +298,56 @@
                                       :edge-attrs (second (first (at/attrs g node s)))}))
                          nil
                          succs))))))
+
+
+(defn df-traverse-attrs-from-start
+  "Traverses the graph,g, either :up or :down from the start node,
+   for each edge walked, updating the attrs of the dest/second node by
+   applying f to the attrs of the first node and the second, or additionally,
+   if :consumes-edge-attrs? is true the set of attrs of the edges between
+   the first and second nodes."
+  [g direction start f & {:keys [consumes-edge-attrs?] :or {consumes-edge-attrs? false}}]
+  {:pre [(contains? #{:up :down} direction)]}
+  (let [edges (gen/pre-edge-traverse
+               (if (= :up direction)
+                 (lg/predecessors g)
+                 (lg/successors g))
+               start)
+        data-fn (fn [[first-node second-node]]
+                  (let [es (mg/edges-between g first-node second-node)]
+                    {:first-node first-node
+                     :second-node second-node
+                     :first-node-attrs (at/attrs g first-node)
+                     :second-node-attrs (at/attrs g second-node)
+                     :edges-attrs (map #(at/attrs g %) edges)}))
+        data (map data-fn edges)]
+    (reduce
+     (fn [g {fnd :first-node
+             snd :second-node
+             fats :first-node-attrs
+             sats :second-node-attrs
+             eats :edges-attrs}]
+       (let [ats (if consumes-edge-attrs?
+                   (f fats sats eats)
+                   (f fats sats))]
+         (mg/add-attrs g snd ats )))
+     g
+     data)))
+
+
+(defn df-traverse-attrs
+  "As df-traverse-attrs-from-start but reduces g over multiple start nodes.
+   If direction is :up, starts from the leaves, :down for the roots."
+  [g direction f & {:keys [consumes-edge-attrs?] :or {consumes-edge-attrs? false}}]
+  {:pre [(contains? #{:up :down} direction)]}
+  (let [starts (if (= :down direction) (roots g) (leaves g))]
+    (reduce
+     (fn [g cur]
+       (df-traverse-attrs-from-start
+        g
+        direction
+        cur
+        f
+        :consumes-edge-attrs? consumes-edge-attrs?))
+     g
+     starts)))
